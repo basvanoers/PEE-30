@@ -157,7 +157,7 @@ void loop() {
  
   if (currentTime - lastTime >= 1000) {
     // Calculate speed in meters per second
-    metingen++:
+    metingen++;
     float pulsesPerSecond = cnt;  // Pulses per second
     float distanceTraveled = (pulsesPerSecond * wheelCircumference);  // Total distance traveled in meters
     last_speed = speed;
@@ -187,7 +187,7 @@ void loop() {
     if (last_speed-speed > 2)
     {
       led_state = !led_state;
-      digitalWrite(LED_pin, led_state)
+      digitalWrite(LED_pin, led_state);
 
     }
     if (!(last_speed-speed>2))
