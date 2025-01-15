@@ -5,7 +5,7 @@
   Adafruit AHTX0 by Adafruit
   Adafruit BusIO by Adafruit
   Adafruit ST7735 and ST7789 Library by Adafruit
-  Adafruit HX711 by Adafruit
+  HX711 Arduino Library by Bogdan Necula
   BH1750 by Christopher Laws
   PulseSensor Playground by Joel Murphy, ...
   Blynk by Volodymyr Shymanskyy
@@ -26,16 +26,16 @@
 #include <Adafruit_ST7789.h> 
 #include <SPI.h> 
 #include <BlynkSimpleEsp32.h>
-#include <Arduino.h>//
-#include "HX711.h"//
-#include "soc/rtc.h"//
+#include <Arduino.h>
+#include "HX711.h"
+#include "soc/rtc.h"
 
 BH1750 lightMeter; //Lichtsensor
 Adafruit_AHTX0 aht; //Temperatuursensor
 PulseSensorPlayground pulseSensor; //Hartslagsensor
 Adafruit_ST7789 tft = Adafruit_ST7789(20, 21, 10, 6, 5); //Display (RX, TX, MOSI, SCLK, Data/command)
 BlynkTimer timer; //Blynk
-//HX711 scale; //HX711
+HX711 scale; //HX711
 
 //Wifi
 char ssid[] = "esp32hotspot";
@@ -46,25 +46,35 @@ int temperatuur = 0;
 int rusthartslag = 0;
 int maxhartslag = 0;
 float vo2Max = 0.0;
+int last_speed = 0;
+int avg_speed = 0;
+int metingen = 0;
+int speed_sum = 0;
+int led_state= 0;
+#define LED_pin    8
 
 //Blynk versturen
 void myTimerEvent()
 {
-  Blynk.virtualWrite(V0, temperatuur);
+  //Blynk.virtualWrite(V0, temperatuur);
   //Blynk.virtualWrite(V1, snelheid);
   //Blynk.virtualWrite(V2, cadans);
   //Blynk.virtualWrite(V3, hartslag);
   //Blynk.virtualWrite(V4, lichtsterkte);
   //Blynk.virtualWrite(V5, VO2max);
   //Blynk.virtualWrite(V6, vermogen);
-  //Blynk.virtualWrite(V7, snelheidwaarschuwing);
+  //Blynk.virtualWrite(V7, snelheidwaarschuwing); bij waarschuwing 1 geven anders is het standaard 0
 }
 
 //Hall effect sensor
+float wheelCircumference = 2.0; // Circumference of the wheel in meters (adjust as needed)
+unsigned long lastTime = 0;    // Last time a pulse count was calculated
+float speed = 0.0;  
 volatile int cnt = 0;
 void count() {
   cnt++;
 }
+
 
 void setup(){
   Serial.begin(9600); //Serial monitor output (niet in eindcode)
@@ -83,23 +93,18 @@ void setup(){
   aht.begin();
 
   //Hall effect sensor
-  pinMode(1, INPUT); //Hallpin = 1
-  attachInterrupt(digitalPinToInterrupt(1), count, FALLING);
+  pinMode(2, INPUT); //Hallpin = 2
+  attachInterrupt(digitalPinToInterrupt(2), count, FALLING);
 
   // PulseSensor Hartslagsensor
   pulseSensor.analogInput(0); //Paarse draad aan pin 0
   pulseSensor.setThreshold(550); //Bepaalt wat als hartslag telt
   pulseSensor.begin();
 
-  //HX711 Load cell
-  //rtc_cpu_freq_config_t config;
-  //rtc_clk_cpu_freq_get_config(&config);
-  //rtc_clk_cpu_freq_to_config(RTC_CPU_FREQ_80M, &config);
-  //rtc_clk_cpu_freq_set_config_fast(&config);
-
-  //scale.begin(16, 4); // GPIOs LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN
-  //scale.set_scale(INSERT YOUR CALIBRATION FACTOR); //calibratiefactor
-  //scale.tare(); // reset schaal naar 0
+  //HX711
+  scale.begin(1, 4); // GPIOs LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN
+  scale.set_scale(-1025); // calibratiefactor
+  scale.tare(); // reset schaal naar 0
   
   //Display Scherminstellingen
   tft.init(240,320); //Schermresolutie
@@ -136,8 +141,8 @@ void setup(){
 void loop() {
 
   //HX711 Load cell
-  //Serial.print(scale.get_units(), 1); //Meting
-  //scale.power_down(); //Load cell uit
+  int gewicht = scale.read(); //Meting
+  scale.power_down(); //Load cell uit
 
   //BH1750 Lichtsensor
   float lux = lightMeter.readLightLevel();
@@ -145,23 +150,54 @@ void loop() {
   //AHT Temperatuursensor
   sensors_event_t humidity, temp;
   aht.getEvent(&humidity, &temp); //Nieuwe data
+  temperatuur = (temp.temperature, 1); //Blynk
 
   //Hall effect sensor
-  unsigned long start = micros();
-  float seconds = (micros() - start) / 1000000.0;
-  if(cnt == 0){
-    tft.fillRect(50, 25, 140, 14, ST77XX_BLACK); tft.setCursor (70, 25); tft.print("0 RPM");
-  }
-  else{
-    float rpm = cnt / seconds ;
-    if(rpm < 1000){ //Realistische waarde
-      tft.fillRect(50, 25, 140, 14, ST77XX_BLACK); tft.setCursor (70, 25); tft.print(String(rpm, 1) + " RPM");
+  unsigned long currentTime = millis(); // Calculate speed every second (1000 ms)
+ 
+  if (currentTime - lastTime >= 1000) {
+    // Calculate speed in meters per second
+    metingen++:
+    float pulsesPerSecond = cnt;  // Pulses per second
+    float distanceTraveled = (pulsesPerSecond * wheelCircumference);  // Total distance traveled in meters
+    last_speed = speed;
+    speed = distanceTraveled * 3,6;  // Speed in meters per second
+
+
+    avg_speed = (speed_sum+speed)/metingen;
+    if (((avg_speed - speed)>= 3)|| (avg_speed - speed) >= -3)
+    {
+    tft.setTextColor(ST77XX_RED);
+    tft.setTextSize(2); //Tekstgrootte
+    tft.setCursor (40,260); //Cursorpositie
+    tft.print("WAARSCHUWING: \n"); //Snelheidswaarde
+    tft.setCursor (40,280); //Cursorpositie
+    tft.print("hoge snelheid \n"); //Snelheidswaarde
+
     }
-    else{
-      tft.fillRect(50, 25, 140, 14, ST77XX_BLACK); tft.setCursor (70, 25); tft.print("Ongeldig");
+    if (!(((avg_speed - speed)>= 2)|| (avg_speed - speed) >= -2))
+    {
+      tft.fillRect(40, 100, 260, 300, ST77XX_BLACK); 
+    
+
     }
+
+    // Reset pulse count for the next calculation
+    cnt = 0;
+    if (last_speed-speed > 2)
+    {
+      led_state = !led_state;
+      digitalWrite(LED_pin, led_state)
+
+    }
+    if (!(last_speed-speed>2))
+    {
+      digitalWrite(LED_pin, LOW);
+    }
+   
+    // Update the last time
+    lastTime = currentTime;
   }
-  cnt = 0;
 
   //PulseSensor Hartslagsensor
   if (pulseSensor.sawStartOfBeat()){ //Test constant voor hartslag
@@ -178,11 +214,14 @@ void loop() {
   //DISPLAY Instellingen Waardes + Eenheden
   tft.setTextSize(2); //Tekstgrootte
   tft.setTextColor(ST77XX_WHITE); //Tekstkleur
-  tft.setCursor (70,65); tft.print("xx r/m"); //Cadanswaarde
+  tft.fillRect(50, 25, 140, 14, ST77XX_BLACK); tft.setCursor (70, 25); tft.print(String(speed, 1) + " m/s");
+  tft.fillRect(50, 65, 140, 14, ST77XX_BLACK); tft.setCursor (70,65); tft.print("xx r/m"); //Cadanswaarde
   tft.fillRect(50, 105, 140, 14, ST77XX_BLACK); tft.setCursor (70,105); tft.print(String(temp.temperature, 1) + " C"); //Temperatuurwaarde
   tft.fillRect(50, 185, 140, 14, ST77XX_BLACK); tft.setCursor (70,185); tft.print(String(lux, 1) + " Lx"); //Lichtsterktewaarde
-  tft.setCursor (25,225); tft.print("xx"); //VO2Maxwaarde
-  tft.setCursor (170,225); tft.print("xx W"); //Vermogenwaarde
+  tft.fillRect(50, 225, 50, 14, ST77XX_BLACK); tft.setCursor (25,225); tft.print("xx"); //VO2Maxwaarde
+  tft.fillRect(50, 225, 340, 14, ST77XX_BLACK); tft.setCursor (170,225); tft.print(gewicht); //Vermogenwaarde
+
+  scale.power_down(); //Load cell uit
 
   //Aansturing LED
   if(lux<100){
@@ -190,8 +229,6 @@ void loop() {
   } else{
     digitalWrite(RGB_BUILTIN, LOW);
   }
-
-  temperatuur = temp.temperature;
 
   //VO2 max
   //if (StopKnop) {
@@ -204,6 +241,6 @@ void loop() {
   Blynk.run();
   timer.run(); // Initiates BlynkTimer
 
-  delay(1000); 
-  //scale.power_up(); //Load cell aan
+  delay(100); 
+  scale.power_up(); //Load cell aan
 }
