@@ -44,22 +44,27 @@ char ssid[] = "esp32hotspot";
 char pass[] = "test12345";
 
 //Variabelen
+unsigned long previousMillis = 0;  // Tijdstip van de laatste schakeling
+const long interval = 200;
+bool ledState = false;  
 int vermogen = 0;
 int temperatuur = 0;
 int rusthartslag = 0;
 int maxhartslag = 0;
 float vo2Max = 0.0;
-int last_speed = 0;
-int avg_speed = 0;
-int metingen = 0;
+float last_speed = 0;
+float avg_speed = 0;
+float metingen = 0;
 int speed_sum = 0;
 int led_state= 0;
 
 //Hall effect sensor
-float wheelCircumference = 2.0; // Omtrek van het wiel in meters
+float wheelCircumference = 0.062; // Omtrek van het wiel in meters
 unsigned long lastTime = 0;     // Laatste pulseberekening
 float speed = 0.0;  
 volatile int cnt = 0;
+
+}
 void count() {
   cnt++;
 }
@@ -77,8 +82,10 @@ void myTimerEvent(){
 }
 
 void setup(){
-  Serial.begin(9600); //Serial monitor output (niet in eindcode)
-
+  Serial.begin(115200); //Serial monitor output (niet in eindcode
+  pinMode(4, OUTPUT); 
+ 
+    
   //Blynk setup
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
   timer.setInterval(1000L, myTimerEvent);
@@ -146,14 +153,19 @@ void loop() {
 
   //Hall effect sensor
   unsigned long currentTime = millis(); // Bereken snelheid elke seconde (1000 ms)
-  if (currentTime - lastTime >= 1000) {
+  if (currentTime - lastTime >= 100) {
+    unsigned long currentMillis = millis();  // Huidige tijd ophalen
+    // Controleer of het interval is verstreken
     metingen++;
     float pulsesPerSecond = cnt;  // Pulses per seconde
     float distanceTraveled = (pulsesPerSecond * wheelCircumference);  // Totale afstand in meter
     last_speed = speed;
     speed = distanceTraveled * 3.6;  // Snelheid in kilometers per seconde
-    avg_speed = (speed_sum+speed)/metingen;
-    if (((avg_speed - speed)>= 3)|| (avg_speed - speed) <= -3){
+    speed_sum += speed;
+    avg_speed = (speed_sum)/metingen;
+    
+    
+    if (((avg_speed - speed)>= 0.3)|| (avg_speed - speed) <= -0.3){
       tft.setTextColor(ST77XX_RED);
       tft.setTextSize(2); //Tekstgrootte
       tft.setCursor (40,260); //Cursorpositie
@@ -161,17 +173,31 @@ void loop() {
       tft.setCursor (40,280); //Cursorpositie
       tft.print("hoge snelheid \n"); //Snelheidswaarde
     }
-    if (!(((avg_speed - speed)>= 2)|| (avg_speed - speed) >= -2)){
+    if (!(((avg_speed - speed)>=0.3)|| (avg_speed - speed) <= -0.3)){
       tft.fillRect(40, 250, 260, 300, ST77XX_BLACK); 
     }
     cnt = 0; // Reset pulseaantal
-    if (last_speed-speed > 2){
-      led_state = !led_state;
-      digitalWrite(LED_pin, led_state);
+
+
+    previousMillis = currentMillis;
+    if (last_speed-speed > 0.3){
+      
+      while (currentMillis - previousMillis >= interval) {
+         // Reset de vorige tijd
+
+        // Wissel de LED-status
+        
+        digitalWrite(4, HIGH);
+        delay(100);
+        digitalWrite(4,LOW);  // Zet de LED aan of uit
     }
-    if (!(last_speed-speed>2)){
-      digitalWrite(LED_pin, LOW);
     }
+    if (last_speed-speed < 0.3){
+      
+      digitalWrite(4,LOW);
+    }
+    
+   
     lastTime = currentTime; // Update lastTime
     vermogen = abs(kracht * distanceTraveled); //absolute waarde van kracht*snelheid
   }
@@ -192,7 +218,7 @@ void loop() {
   tft.setTextSize(2); //Tekstgrootte
   tft.setTextColor(ST77XX_WHITE); //Tekstkleur
   tft.fillRect(50, 25, 140, 14, ST77XX_BLACK); tft.setCursor (70, 25); tft.print(String(speed, 1) + " km/h");
-  tft.fillRect(50, 65, 140, 14, ST77XX_BLACK); tft.setCursor (70,65); tft.print("xx r/m"); //Cadanswaarde
+  tft.fillRect(50, 65, 140, 14, ST77XX_BLACK); tft.setCursor (70,65); tft.print(String(last_speed-speed,1)+" r/m"); //Cadanswaarde
   tft.fillRect(50, 105, 140, 14, ST77XX_BLACK); tft.setCursor (70,105); tft.print(String(temp.temperature, 1) + " C"); //Temperatuurwaarde
   tft.fillRect(50, 185, 140, 14, ST77XX_BLACK); tft.setCursor (70,185); tft.print(String(lux, 1) + " Lx"); //Lichtsterktewaarde
   tft.fillRect(50, 225, 50, 14, ST77XX_BLACK); tft.setCursor (25,225); tft.print("xx"); //VO2Maxwaarde
