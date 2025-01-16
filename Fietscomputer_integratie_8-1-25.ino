@@ -17,7 +17,7 @@
 #define BLYNK_TEMPLATE_NAME         "Project ESP32"
 #define BLYNK_AUTH_TOKEN            "zFWLl2gME5_I9ySEqx2BpbQYU8OtEXV6"
 
-#define LED_pin    8
+#define LED_pin    4
 
 //Libraries
 #include <Wire.h>
@@ -58,13 +58,15 @@ float metingen = 0;
 int speed_sum = 0;
 int led_state= 0;
 
+unsigned long vorigeMillis = 0;  // Slaat de laatste tijd op dat de LED werd bijgewerkt
+const long wacht = 1000;       // Interval om de LED te laten knipperen (in milliseconden)
+
 //Hall effect sensor
 float wheelCircumference = 0.062; // Omtrek van het wiel in meters
 unsigned long lastTime = 0;     // Laatste pulseberekening
 float speed = 0.0;  
 volatile int cnt = 0;
 
-}
 void count() {
   cnt++;
 }
@@ -181,16 +183,27 @@ void loop() {
 
     previousMillis = currentMillis;
     if (last_speed-speed > 0.3){
-      
-      while (currentMillis - previousMillis >= interval) {
-         // Reset de vorige tijd
 
-        // Wissel de LED-status
-        
-        digitalWrite(4, HIGH);
-        delay(100);
-        digitalWrite(4,LOW);  // Zet de LED aan of uit
-    }
+
+// Haal de huidige tijd op
+  unsigned long huidigeMillis = millis();
+
+  // Start een while-loop als het tijd is om de LED om te schakelen
+  int i = 0;
+  while (i<3) {
+    i++;
+    // Zet de LED aan
+    digitalWrite(4, HIGH);
+    // Wacht 1 seconde (1000 milliseconden)
+    delay(100);
+    // Zet de LED uit
+    digitalWrite(4, LOW);
+    // Wacht weer 1 seconde
+    delay(100);
+  }
+  i = 0;
+
+
     }
     if (last_speed-speed < 0.3){
       
@@ -244,6 +257,5 @@ void loop() {
   Blynk.run();
   timer.run();
 
-  delay(100); 
   scale.power_up(); //Load cell aan
 }
